@@ -148,6 +148,19 @@ def get_close_price(ticker: str, date: str) -> int:
     return int(df["종가"].iloc[-1])
 
 
+@_defensive("fetching OHLCV history")
+def get_ohlcv_history(ticker: str, fromdate: str, todate: str, freq: str = "d") -> pd.DataFrame:
+    """Per-ticker OHLCV over a window (freq: d/m/y), adjusted prices."""
+    df = stock.get_market_ohlcv(fromdate, todate, ticker, freq=freq)
+    if df is None or df.empty:
+        raise KRXDataError(f"Empty OHLCV history for {ticker} ({fromdate}–{todate}, freq={freq}).")
+    df = df.rename(columns={"시가": "open", "고가": "high", "저가": "low",
+                            "종가": "close", "거래량": "volume", "거래대금": "trading_value",
+                            "등락률": "change_pct"})
+    df.attrs.update({"ticker": ticker, "from": fromdate, "to": todate, "freq": freq})
+    return df
+
+
 @_defensive("listing trading days")
 def get_trading_days(fromdate: str, todate: str) -> list[str]:
     """Trading days in [fromdate, todate] as YYYYMMDD (via KOSPI composite index)."""

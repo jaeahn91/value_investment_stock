@@ -14,6 +14,7 @@ Reference: https://opendart.fss.or.kr (rate limits observed empirically, not ass
 
 from __future__ import annotations
 
+import datetime as _dt
 import io
 import os
 import time
@@ -35,6 +36,16 @@ class DartError(RuntimeError):
 
 def _norm(s: str) -> str:
     return (s or "").replace(" ", "")
+
+
+def _ratio(raw: str | None) -> float | None:
+    raw = (raw or "").replace(",", "").strip()
+    if raw in ("", "-"):
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def _amount(raw: str | None) -> int | None:
@@ -211,6 +222,63 @@ class DartClient:
                 }
             )
         return history
+
+    # ------------------------------------------------------------ disclosures & ownership
+
+    def get_recent_disclosures(self, corp_code: str, days: int = 180, limit: int = 100) -> list[dict]:
+        """Disclosures filed by one company over the last `days`, newest first.
+
+        Endpoint: list.json (공시검색). '013' (none) returns []. One page only —
+        `limit` is capped at DART's 100-per-page maximum.
+        """
+        end = _dt.date.today()
+        begin = end - _dt.timedelta(days=days)
+        payload = self._get(
+            "list.json", corp_code=corp_code,
+            bgn_de=begin.strftime("%Y%m%d"), end_de=end.strftime("%Y%m%d"),
+            page_no=1, page_count=min(limit, 100),
+        )
+        status = payload.get("status")
+        if status == "013":
+            return []
+        if status != "000":
+            raise DartError(
+                f"DART error status={status} msg={payload.get('message')!r} "
+                f"(list.json, corp={corp_code})."
+            )
+        return [
+            {"date": r.get("rcept_dt"), "title": (r.get("report_nm") or "").strip(),
+             "filer": r.get("flr_nm"), "rcept_no": r.get("rcept_no"),
+             "remark": (r.get("rm") or "").strip() or None}
+            for r in payload.get("list", [])
+        ]
+
+    def get_major_shareholders(self, corp_code: str, year: int) -> list[dict]:
+        """최대주주 및 특수관계인 지분 from the FY`year` annual report.
+
+        Endpoint: hyslrSttus.json. '013' (report not filed / no data) returns [].
+        Ratios are percent figures as filed; missing values are None.
+        """
+        payload = self._get(
+            "hyslrSttus.json", corp_code=corp_code,
+            bsns_year=str(year), reprt_code=_ANNUAL_REPORT,
+        )
+        status = payload.get("status")
+        if status == "013":
+            return []
+        if status != "000":
+            raise DartError(
+                f"DART error status={status} msg={payload.get('message')!r} "
+                f"(hyslrSttus, corp={corp_code}, year={year})."
+            )
+        return [
+            {"name": (r.get("nm") or "").strip(),
+             "relation": (r.get("relate") or "").strip() or None,
+             "stock_kind": (r.get("stock_knd") or "").strip() or None,
+             "shares_end": _amount(r.get("trmend_posesn_stock_co")),
+             "ratio_end_pct": _ratio(r.get("trmend_posesn_stock_qota_rt"))}
+            for r in payload.get("list", [])
+        ]
 
     # ------------------------------------------------------------ telemetry
 
