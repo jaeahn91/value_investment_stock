@@ -1,0 +1,59 @@
+# config.yaml — screening + allocation rules (schema: implementation_spec.md §4)
+# Defaults are the spec's v1 starting points — tune them, they are not recommendations.
+# Every threshold used anywhere in code must trace to a key here (CLAUDE.md: no magic numbers).
+
+meta:
+  version: 1
+  last_reviewed: "2026-07-08"
+
+universe:
+  markets: [KOSPI, KOSDAQ]
+  min_market_cap_krw: 300000000000        # 3,000억 — avoid microcap illiquidity
+  min_avg_daily_value_krw: 1000000000     # 10억/day average
+  min_avg_daily_value_window_days: 60     # trading days averaged for the above
+  exclude:
+    admin_issue: true                     # 관리종목 / 투자주의환기 (see enforcement notes in queue)
+    trading_halt: true
+    spac: true
+    preferred_shares: true
+    reits: true
+
+sectors:
+  advance_min_axis_a: 4
+  advance_min_axis_b: 4
+  max_advancing: 3
+
+screening:                                # Gate 2→3, all code-enforced
+  max_per: 12
+  max_pbr: 1.2
+  min_roe: 0.07
+  require_positive_ocf: true              # latest FY; 3y sum must also be > 0
+  max_net_debt_to_equity: 1.0
+  candidates_per_sector: 5
+  trap_exclusion:
+    max_consecutive_rev_and_margin_decline_yrs: 2    # 3+ simultaneous → cut
+  rerating_guard:                         # the Hyundai-trap starting-point check
+    max_price_return_1y: 0.60             # >60% in 12m → not a discovery candidate
+    max_own_5y_pbr_percentile: 0.60       # PBR above own 60th pctile → drop
+
+allocation:
+  max_weight_per_stock: 0.15
+  max_weight_per_sector: 0.30
+  cash_floor: 0.05
+  cash_ceiling: 0.30
+  allow_hold_cash: true
+  tier_weights:
+    deep_value: 1.5                       # price <= buy_below * deep_value_discount
+    add_zone: 1.0                         # price <= buy_below
+  deep_value_discount: 0.90
+  rebalance_pull: 0.5                     # 0..1 boost toward underweight names
+
+data:
+  annual_years: 4                         # 4 FYs -> three YoY deltas for the trap gate
+  statement_basis: consolidated           # fallback standalone — must be tagged
+  price_source: pykrx
+  financial_source: dart
+  min_history_months_for_percentile: 36   # fewer monthly obs -> percentile unverifiable -> name cannot pass the guard
+
+review:
+  verdict_ttl_months: 6                   # expired verdicts cannot feed Gate 3→4

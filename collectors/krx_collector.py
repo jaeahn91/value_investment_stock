@@ -148,6 +148,52 @@ def get_close_price(ticker: str, date: str) -> int:
     return int(df["종가"].iloc[-1])
 
 
+@_defensive("listing trading days")
+def get_trading_days(fromdate: str, todate: str) -> list[str]:
+    """Trading days in [fromdate, todate] as YYYYMMDD (via KOSPI composite index)."""
+    df = stock.get_index_ohlcv(fromdate, todate, "1001")
+    if df is None or df.empty:
+        raise KRXDataError(f"No trading days resolved in {fromdate}–{todate}.")
+    return [d.strftime("%Y%m%d") for d in df.index]
+
+
+@_defensive("fetching whole-market OHLCV snapshot")
+def get_ohlcv_snapshot(date: str, markets: tuple[str, ...] = ("KOSPI", "KOSDAQ")) -> pd.DataFrame:
+    """Per-ticker OHLCV + trading value on one date (liquidity screen input)."""
+    frames = []
+    for mkt in markets:
+        df = stock.get_market_ohlcv(date, market=mkt)
+        if df is None or df.empty:
+            raise KRXDataError(f"Empty OHLCV snapshot for {mkt} on {date}.")
+        frames.append(df)
+    out = pd.concat(frames).rename(
+        columns={"시가": "open", "고가": "high", "저가": "low", "종가": "close",
+                 "거래량": "volume", "거래대금": "trading_value", "등락률": "change_pct"}
+    )
+    out.index.name = "ticker"
+    out.attrs["ref_date"] = date
+    return out
+
+
+@_defensive("fetching market-wide price change")
+def get_price_change(fromdate: str, todate: str, market: str) -> pd.DataFrame:
+    """Per-ticker price change over a window, with names (re-rating guard input).
+
+    Names listed mid-window appear with partial-window returns; names delisted
+    before `todate` are absent — callers must treat missing rows as unverifiable.
+    """
+    df = stock.get_market_price_change(fromdate, todate, market=market)
+    if df is None or df.empty:
+        raise KRXDataError(f"Empty price-change frame for {market} {fromdate}–{todate}.")
+    df = df.rename(
+        columns={"종목명": "name", "시가": "open", "종가": "close", "변동폭": "change",
+                 "등락률": "return_pct", "거래량": "volume", "거래대금": "trading_value"}
+    )
+    df.index.name = "ticker"
+    df.attrs.update({"from": fromdate, "to": todate})
+    return df
+
+
 # ---------------------------------------------------------------- sectors
 
 #: Substrings identifying non-sector (composite/strategy/size) indices to skip.
