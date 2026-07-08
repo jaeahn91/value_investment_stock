@@ -230,26 +230,62 @@ def _fetch_index_members(code: str, name: str, date: str, attempts: int = 3) -> 
     ) from (last if isinstance(last, Exception) else None)
 
 
+@_defensive("listing sector indices")
+def list_sector_indices(date: str, market: str) -> list[tuple[str, str]]:
+    """(code, name) pairs of sector indices on `date`, composites excluded
+    via _NON_SECTOR_HINTS (substring) and _NON_SECTOR_EXACT (exact name)."""
+    out = []
+    for code in stock.get_index_ticker_list(date, market=market):
+        name = stock.get_index_ticker_name(code)
+        if name in _NON_SECTOR_EXACT or any(h in name for h in _NON_SECTOR_HINTS):
+            continue
+        out.append((str(code), name))
+    if not out:
+        raise KRXDataError(f"No sector indices resolved for {market} on {date}.")
+    return out
+
+
+@_defensive("fetching index fundamental history")
+def get_index_fundamental_history_monthly(index_code: str, years: int = 5, end: str | None = None) -> pd.DataFrame:
+    """Month-end index-level close/PER/PBR history (KRX-published, last-FY basis).
+
+    pykrx 1.2.8's index-fundamental endpoint is daily-only (its docstring
+    advertises freq but the implementation doesn't take it), so this fetches
+    daily and keeps the last observation of each month.
+    """
+    end = end or nearest_business_day()
+    end_dt = _dt.datetime.strptime(end, "%Y%m%d")
+    start = (end_dt - _dt.timedelta(days=365 * years + 10)).strftime("%Y%m%d")
+    df = stock.get_index_fundamental(start, end, index_code)
+    if df is None or df.empty:
+        raise KRXDataError(f"Empty index fundamental history for {index_code} ({start}–{end}).")
+    # KRX publishes valuation ratios end-of-day: the current day's row carries a
+    # live price but zeroed PER/PBR/div-yield. Null those placeholder rows so
+    # the month-end resample keeps the last PUBLISHED ratios instead of a 0.
+    metric_cols = [c for c in ("PER", "PBR", "배당수익률") if c in df.columns]
+    if {"PER", "PBR"}.issubset(df.columns):
+        placeholder = (df["PER"] == 0) & (df["PBR"] == 0)
+        df.loc[placeholder, metric_cols] = float("nan")
+    df = df.resample("ME").last().dropna(how="all")
+    df.attrs.update({"index_code": index_code, "from": start, "to": end, "freq": "month-end"})
+    return df
+
+
 @_defensive("building sector map from index constituents")
 def get_sector_map(date: str, market: str) -> tuple[dict[str, str], list[str]]:
     """ticker -> sector-index-name via KRX sector index membership.
 
     Returns (mapping, sector_names_used). The candidate sector list is
-    heuristic (exclusion-based); poc.py prints it for human validation and
-    quant_filter must surface an explicit `unmapped` bucket downstream.
-    Composite indices are skipped via _NON_SECTOR_HINTS (substring) and
-    _NON_SECTOR_EXACT (exact name) — review the printed list and extend them
-    if new composites leak through.
+    heuristic (exclusion-based, see list_sector_indices); poc.py prints it for
+    human validation and quant_filter must surface an explicit `unmapped`
+    bucket downstream.
 
     When a ticker belongs to several indices, the SMALLEST index wins:
     narrower membership means a more specific sector (e.g. 증권/보험 must beat
     the broader 금융).
     """
     fetched: list[tuple[str, list[str]]] = []
-    for code in stock.get_index_ticker_list(date, market=market):
-        name = stock.get_index_ticker_name(code)
-        if name in _NON_SECTOR_EXACT or any(h in name for h in _NON_SECTOR_HINTS):
-            continue
+    for code, name in list_sector_indices(date, market):
         fetched.append((name, _fetch_index_members(code, name, date)))
     mapping: dict[str, str] = {}
     for name, members in sorted(fetched, key=lambda nm: len(nm[1])):

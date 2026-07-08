@@ -58,25 +58,24 @@ value_investment_stock/
 ├── README.md                  # ✅
 ├── requirements.txt           # ✅
 ├── poc.py                     # ✅ Gate 0 acceptance-criteria runner (spec §6)
-├── config.yaml                # screening + allocation rules (set once; schema: spec §4)
+├── config.yaml                # ✅ screening + allocation rules (set once; schema: spec §4)
 ├── portfolio.yaml             # current holdings + cash (updated monthly; schema: spec §5)
 ├── decisions.log.yaml         # append-only record of executed buys + rationale
 ├── pipeline.py                # orchestration / one-command entry point
 ├── collectors/                # ✅
 │   ├── krx_collector.py       # ✅ pykrx: prices & metrics
 │   └── dart_collector.py      # ✅ DART API: financial statements
-├── screens/
-│   ├── quant_filter.py        # Stage 2 quant filter + value-trap pre-exclusion
-│   └── sector_tagger.py       # stock → sector mapping
+├── screens/                   # ✅
+│   ├── quant_filter.py        # ✅ Stage 2 quant filter + value-trap pre-exclusion
+│   └── sector_tagger.py       # ✅ stock → sector mapping (per-run cache)
 ├── analysis/
-│   ├── sector_llm.py          # Stage 1 sector scoring
-│   └── deep_dive_llm.py       # Stage 3 11-section valuation
+│   ├── sector_dashboard.py    # ✅ Stage 1 input: sector_dashboard.yaml generator
+│   └── deep_dive_llm.py       # Stage 3 11-section valuation (data-pack assembly)
 ├── allocate/
 │   └── allocator.py           # Stage 4 monthly DCA sizing
-├── prompts/
-│   ├── discovery.md           # ✅ Stages 1–2 draft — to be split per spec §8 into:
-│   ├── stage1_sector.md       #   Stage 1 prompt (input: sector_dashboard.yaml)
-│   ├── stage2_review.md       #   Stage 2 label/veto prompt (input: stage2_queue.yaml)
+├── prompts/                   # (discovery.md draft was split per spec §8 and deleted — see git history)
+│   ├── stage1_sector.md       # ✅ Stage 1 prompt (input: sector_dashboard.yaml)
+│   ├── stage2_review.md       # ✅ Stage 2 label/veto prompt (input: stage2_queue.yaml)
 │   └── valuation.md           # Stage 3 prompt (11-section)
 ├── .claude/commands/          # /screen, /deepdive, /allocate slash commands
 ├── runs/                      # machine-readable stage artifacts, per run_id (YYYYMM)
@@ -123,12 +122,12 @@ Output: per-stock won amount + share count, resulting post-buy weights, leftover
 
 ## Build order (current status — mirrors spec §11)
 
-1. ✅ `prompts/discovery.md` draft — Stages 1–2 prompt.
+1. ✅ `prompts/discovery.md` draft — Stages 1–2 prompt (since split per spec §8 and deleted).
 2. ✅ `CLAUDE.md` + `implementation_spec.md` — schemas, gate contracts, artifact formats.
-3. ◀ **Gate 0: `collectors/` + `poc.py` — run acceptance criteria (spec §6), produce `outputs/poc_report.md`. Downstream work is blocked until this passes.**
-4. `screens/sector_tagger.py` + `screens/quant_filter.py` — produces `stage2_queue.yaml`.
-5. Split prompts per spec §8 (`stage1_sector.md`, `stage2_review.md`); wire `sector_dashboard.yaml` generation.
-6. `analysis/deep_dive_llm.py` — data-pack assembly + verdict writing.
+3. ✅ Gate 0: `collectors/` + `poc.py` — acceptance criteria passed 2026-07-08 (`outputs/poc_report.md`, C5 sector coverage 98.5%).
+4. ✅ `screens/sector_tagger.py` + `screens/quant_filter.py` — produces `stage2_queue.yaml` (smoke-tested end-to-end).
+5. ✅ Prompts split per spec §8 (`stage1_sector.md`, `stage2_review.md`); `analysis/sector_dashboard.py` generates `sector_dashboard.yaml`.
+6. ◀ **`analysis/deep_dive_llm.py` — data-pack assembly + verdict writing.**
 7. `allocate/allocator.py` — Stage 4 sizing against the `allocation.yaml` schema.
 8. `pipeline.py` + `.claude/commands/` slash commands.
 9. (Later) Phase 2 local dashboard (Streamlit). Build only after the report generator proves itself.
