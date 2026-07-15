@@ -365,6 +365,82 @@ Deliberately out of v1 so the pipeline reaches end-to-end sooner:
 4. `screens/sector_tagger.py` + `screens/quant_filter.py` → produces `stage2_queue.yaml`
 5. Split prompts per §8 (`stage1_sector.md`, `stage2_review.md`); wire sector_dashboard generation
 6. `analysis/deep_dive_llm.py` data-pack assembly + verdict writing
-7. `allocate/allocator.py` against `allocation.yaml` schema
+7. `allocate/allocator.py` against `allocation.yaml` schema — **design finalized in §12; implementation pending**
 8. `pipeline.py` + `.claude/commands/` slash commands
 9. (Phase 2) dashboard
+
+---
+
+## 12. Stage 4 allocator — sizing algorithm (design, finalized 2026-07-15)
+
+Refines the CLAUDE.md sizing brief into an implementable, deterministic spec. Reads all
+thresholds from `config.yaml`. Consumes approved `UNDERVALUED` verdicts + `portfolio.yaml`
++ this month's `budget_krw`; produces `runs/<run_id>/allocation.yaml` (§3.4) and a report.
+
+### 12.1 Gate 3→4 predicate (per verdict, all in code)
+
+A verdict feeds the allocator iff **all** hold:
+`verdict == UNDERVALUED` ∧ `approved_by_user == true` (CP-2) ∧ `expires >= run date` (not expired)
+∧ `buy_below_krw` present (non-null). Failing verdicts are dropped with a recorded reason;
+expired ones are listed under "expired — re-run /deepdive" (§9), never silently.
+
+### 12.2 Reference quantities (one price snapshot, `price_date`)
+
+- `p_i` = pykrx close on the allocation day for each candidate/holding (market data → pykrx wins, §9).
+- `V` = portfolio value = Σ(shares × price over all holdings) + `cash`.  (denominator for every weight)
+- `w_i` = current weight of candidate `i` = (held shares_i × p_i)/V, or 0 if not currently held.
+- Deployable cash `D = min(budget_krw, cash − cash_floor·V)`. If `D ≤ 0` → no orders, hold cash.
+
+### 12.3 Tier (per candidate, price `p` vs `buy_below` `B`)
+
+- `p ≤ B · deep_value_discount` → **deep_value** (`tier_weights.deep_value`, 1.5)
+- `p ≤ B` → **add_zone** (`tier_weights.add_zone`, 1.0)
+- `p > B` → not in a buy zone → no order for this name.
+
+### 12.4 Score (tier × rebalancing pull)
+
+```
+stock_headroom_i  = clamp((max_weight_per_stock − w_i) / max_weight_per_stock, 0, 1)
+pull_i            = 0                              if held tag(i) ∈ rebalance_pull_exclude_tags
+                  = rebalance_pull · stock_headroom_i   otherwise
+score_i           = tier_weight_i · (1 + pull_i)
+```
+
+`tag(i)` is looked up in `portfolio.yaml` (only held names have a tag; a brand-new candidate
+has none → pull applies). This is the explicit config decision spec §5 deferred: catalyst
+bets are **buyable but not pulled toward target weight**.
+
+### 12.5 Cap-constrained whole-share allocation (deterministic)
+
+Caps in KRW headroom: `stock_cap_krw_i = max(0, max_weight_per_stock·V − held_value_i)`;
+`sector_cap_krw_s = max(0, max_weight_per_sector·V − held_value_s)` (aggregated per sector,
+decremented as orders are placed).
+
+1. **Proportional target:** `target_i = D · score_i / Σscore`, each clamped to `stock_cap_krw_i`
+   and its sector's remaining headroom; excess from clamped names redistributes to unclamped
+   names in score proportion (iterate until stable or unplaceable).
+2. **Floor to whole shares:** `shares_i = floor(target_i / p_i)` (Korean 1-share lots).
+3. **Greedy remainder:** while any candidate can take +1 share within `D` remaining **and**
+   both its stock- and sector-cap headroom, add one share to the best candidate.
+   **Tie-break order: score desc → price asc → ticker asc** (fully deterministic).
+4. Leftover after step 3 → `leftover_cash_krw`; note "whole-share rounding reallocated …" in
+   `constraints_hit`.
+
+### 12.6 Cash is a position
+
+If no candidate is in a buy zone (all `p > B`) or `D ≤ 0`: emit zero orders, set
+`held_cash_reason` (e.g. "no name in add-zone this run"), and — when `allow_hold_cash` —
+recommend holding rather than forcing deployment. `cash_ceiling` is reported as a signal in
+v1, not a hard deployment driver (budget governs).
+
+### 12.7 Structure, purity, outputs
+
+- **Pure core:** `size(candidates, portfolio, prices, cfg) -> AllocationResult` — no network, no
+  clock. IO wrappers fetch prices (`krx_collector.get_close_price`) and read verdicts/portfolio.
+  This lets tests drive it with synthetic verdicts+prices (no Stage-3 BUYs exist yet).
+- **verdict `sector`:** needed for the sector cap. Source order: the verdict file (extend
+  `deep_dive_llm.write_verdict` to persist `sector` from `stage2_queue.yaml`) → held name's
+  `portfolio.yaml` sector → `sector_tagger`. Record which was used.
+- **Outputs:** `runs/<run_id>/allocation.yaml` per §3.4; `outputs/report_<date>.md` (must carry
+  the decision-support disclaimer; append-only — never overwrite). The allocator does **not**
+  touch `decisions.log.yaml` — that is CP-3 (manual fills), out of the allocator's authority.

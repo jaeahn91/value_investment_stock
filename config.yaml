@@ -47,6 +47,7 @@ allocation:
     add_zone: 1.0                         # price <= buy_below
   deep_value_discount: 0.90
   rebalance_pull: 0.5                     # 0..1 boost toward underweight names
+  rebalance_pull_exclude_tags: [catalyst_bet]   # spec §5/§12: these holdings can be bought, but get no underweight boost
 
 data:
   annual_years: 4                         # 4 FYs -> three YoY deltas for the trap gate
