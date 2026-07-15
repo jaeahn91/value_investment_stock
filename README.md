@@ -1,146 +1,151 @@
 # value_investment_stock
 
-A **verification-gated decision-support pipeline** — an LLM system kept on a short leash by
-code-enforced controls, human approval checkpoints, and strict data-provenance rules —
-applied to Korean value investing (KOSPI / KOSDAQ) with monthly dollar-cost averaging (적립식 투자).
+**검증 게이트로 통제되는 의사결정 지원 파이프라인** — 코드로 강제되는 통제 장치, 인간 승인
+체크포인트, 엄격한 데이터 출처 규칙으로 LLM을 짧은 고삐에 묶어 두고, 이를 한국 주식시장
+(KOSPI / KOSDAQ) 가치투자와 매월 적립식 투자(DCA)에 적용한 시스템입니다.
 
-The investing domain is the application. The reusable core is the **control design**: a set
-of mechanisms that let a language model *reason and veto* but never *fabricate, advance, or
-execute*. An LLM proposes; code decides what passes; a human approves each step.
+투자라는 도메인은 *응용 사례*일 뿐입니다. 재사용 가능한 핵심은 **통제 설계(control design)** —
+언어 모델이 *추론하고 거부(veto)* 할 수는 있으나 *수치를 지어내거나, 후보를 통과시키거나,
+매매를 실행* 할 수는 없게 만드는 장치들의 집합입니다. LLM은 제안하고, 코드가 무엇을 통과시킬지
+결정하며, 인간이 각 단계를 승인합니다.
 
-> ⚠️ **This is decision-support, NOT investment advice and NOT auto-trading.**
-> It surfaces candidates and proposes allocations against rules *you* define. Final
-> judgment, execution, taxes, and fees are yours. The author is not a licensed
-> advisor. The system never places trades and contains no trade-execution code.
+> ⚠️ **이것은 투자 판단을 돕는 의사결정 지원 도구이며, 투자자문이 아니고 자동매매가 아닙니다.**
+> 사용자가 스스로 정의한 규칙에 따라 후보를 제시하고 배분안을 제안할 뿐입니다. 최종 판단, 매매
+> 실행, 세금, 수수료는 모두 사용자의 몫입니다. 제작자는 인가된 투자자문업자가 아닙니다. 이
+> 시스템은 어떤 주문도 실행하지 않으며, 매매 실행 코드를 포함하지 않습니다.
 
 ---
 
-## Control design (the point of the project)
+## 통제 설계 (이 프로젝트의 본질)
 
-The pipeline is engineered so a language model cannot become the source of a decision. Seven
-controls enforce that, and together they are the reusable asset — the investing logic is just
-where they are exercised:
+이 파이프라인은 언어 모델이 의사결정의 *출처*가 될 수 없도록 설계되었습니다. 일곱 개의 통제
+장치가 이를 강제하며, 이 장치들의 집합 자체가 재사용 가능한 자산입니다 — 투자 로직은 그 장치들이
+발휘되는 무대일 뿐입니다.
 
-| Control | What it guarantees |
+| 통제 장치 | 무엇을 보장하는가 |
 |---|---|
-| **Data flows in, never out** | Every LLM stage is fed a code-generated data pack. Every number originates in `collectors/` (KRX / DART) — never in the model. |
-| **`[unverified-llm]` tagging** | Any figure in LLM output that is absent from its input pack is quarantined with this tag and excluded from gate evaluation. No un-sourced number can move a decision. |
-| **Code-enforced gates** | Gates 1→2, 2→3, 3→4 are evaluated in code, not left to LLM discretion. A candidate that fails does not advance — and the LLM cannot resurrect a code-rejected name. |
-| **Veto-only asymmetry** | The LLM may *tighten* the funnel (veto a candidate with a stated reason) but never *loosen* it. Model influence is one-directional by design. |
-| **Human checkpoints (CP-1 – CP-3)** | Human approval is required — per artifact, per run — after Stage 1 (sectors), Stage 3 (verdicts), and Stage 4 (allocation). Nothing carries an approval forward implicitly. |
-| **State in files, not chat** | `config.yaml` (rules) and `portfolio.yaml` (holdings + cash) are the single source of truth — auditable, diff-able, reproducible. The pipeline is stateful by design. |
-| **Hard execution boundary** | The system proposes; it never disposes. No trade is ever placed; no execution code exists in the repo. |
+| **데이터는 안으로만 흐르고, 밖으로 나오지 않음** | 모든 LLM 단계는 코드가 생성한 데이터 팩을 입력으로 받습니다. 모든 수치는 `collectors/`(KRX / DART)에서 나오며, 모델에서 나오지 않습니다. |
+| **`[unverified-llm]` 태깅** | LLM 출력에 있으나 입력 팩에는 없는 수치는 이 태그로 격리되어 게이트 평가에서 제외됩니다. 출처 없는 숫자는 어떤 판단도 움직일 수 없습니다. |
+| **코드로 강제되는 게이트** | 게이트 1→2, 2→3, 3→4는 LLM 재량이 아니라 코드로 평가됩니다. 탈락한 후보는 진행하지 못하며, LLM은 코드가 거부한 종목을 되살릴 수 없습니다. |
+| **veto 전용 비대칭 (veto-only)** | LLM은 깔때기를 *좁힐* 수는 있으나(사유를 밝혀 거부) *넓힐* 수는 없습니다. 모델의 영향력은 설계상 한 방향입니다. |
+| **인간 체크포인트 (CP-1 ~ CP-3)** | Stage 1(섹터), Stage 3(판정), Stage 4(배분) 이후 — 산출물마다, 실행(run)마다 — 인간의 승인이 필요합니다. 어떤 승인도 다음 단계로 암묵적으로 이월되지 않습니다. |
+| **상태는 파일에 두며, 대화에 두지 않음** | `config.yaml`(규칙)과 `portfolio.yaml`(보유 + 현금)이 유일한 진실의 원천입니다 — 감사 가능하고, diff 가능하며, 재현 가능합니다. 파이프라인은 설계상 상태를 갖습니다(stateful). |
+| **엄격한 실행 경계** | 시스템은 제안할 뿐 처분하지 않습니다. 어떤 주문도 실행되지 않으며, 저장소에 실행 코드가 존재하지 않습니다. |
 
-Every threshold the code applies traces to a key in `config.yaml` — there are no magic numbers.
+코드가 적용하는 모든 임계값은 `config.yaml`의 키로 추적됩니다 — 코드에 매직 넘버는 없습니다.
 
 ---
 
-## What it does
+## 무엇을 하는가
 
-Four stages run as a connected funnel. Each hands off to the next via an explicit artifact
-(not implicit chat context), and each **code-enforced gate** stops a candidate that fails —
-so the pipeline never drifts into "everything looks promising."
+네 개의 단계가 하나로 연결된 깔때기(funnel)로 실행됩니다. 각 단계는 (암묵적 대화 맥락이 아니라)
+명시적 산출물로 다음 단계에 넘기며, **코드로 강제되는 게이트**가 탈락 후보를 걸러 내 —
+파이프라인이 "전부 유망해 보인다"로 흘러가지 않게 합니다.
 
-| Stage | What it does | Engine | Output |
+| 단계 | 하는 일 | 엔진 | 산출물 |
 |---|---|---|---|
-| **1. Sector ID** | Find 2–3 promising-but-underpriced sectors (top-down) | LLM | `stage1_sectors.yaml` |
-| **2. Stock screen** | 3–5 cheap-but-sound candidates per sector | Quant filter (KRX / DART) | `stage2_queue.yaml` |
-| **3. Deep validation** | Per-stock Undervalued / Trap verdict | 11-section LLM prompt | `verdicts/<ticker>.yaml` |
-| **4. Allocation** | Monthly DCA buy proposal | Rule-based + portfolio state | `allocation.yaml` |
+| **1. 섹터 식별** | 유망하지만 저평가된 섹터 2~3개 발굴 (top-down) | LLM | `stage1_sectors.yaml` |
+| **2. 종목 선별** | 섹터당 싸지만 견실한 후보 3~5개 | 퀀트 필터 (KRX / DART) | `stage2_queue.yaml` |
+| **3. 심층 검증** | 종목별 저평가 / 밸류트랩 판정 | 11개 섹션 LLM 프롬프트 | `verdicts/<ticker>.yaml` |
+| **4. 배분** | 월별 적립식 매수 제안 | 규칙 기반 + 포트폴리오 상태 | `allocation.yaml` |
 
-**The gates:**
+**게이트:**
 
-- **Gate 1→2** — a sector advances only if it scores ≥4 on **both** axes: structural attractiveness **and** under-pricing. High-promise-but-expensive sectors are rejected with a reason.
-- **Gate 2→3** — a stock advances only if it shows cheapness signals **and** meets minimum fundamentals (positive operating cash flow, non-excessive debt, revenue not in structural decline) **and** passes first-pass value-trap exclusion.
-- **Gate 3→4** — only "Undervalued" stocks with acceptable trap risk and a defined buy-price level feed the allocator.
+- **게이트 1→2** — 섹터는 두 축 모두에서 ≥4점일 때만 진행합니다: 구조적 매력도 **그리고** 저평가 여부. 유망하지만 비싼 섹터는 사유와 함께 탈락시킵니다.
+- **게이트 2→3** — 종목은 저평가 신호를 보이고 **동시에** 최소 펀더멘털(영업현금흐름 양수, 과도하지 않은 부채, 구조적으로 감소하지 않는 매출)을 충족하며 **동시에** 1차 밸류트랩 배제를 통과할 때만 진행합니다.
+- **게이트 3→4** — "저평가"로 판정되고 트랩 위험이 수용 가능하며 매수 고려 가격이 정의된 종목만 배분기로 넘어갑니다.
 
-Each stage's role is strict: collectors only collect (no analysis); screens only filter (no
-valuation); the allocator only sizes (it recommends no ticker on its own authority).
+각 단계의 역할은 엄격합니다: collectors는 수집만(분석 없음), screens는 필터만(밸류에이션 없음),
+배분기(allocator)는 사이징만(자체 권한으로 종목을 추천하지 않음) 담당합니다.
 
 ---
 
-## Setup
+## 설치 및 준비
 
-Requires **Python 3.11+**.
+**Python 3.11+** 가 필요합니다.
 
 ```bash
 pip install -r requirements.txt   # pykrx, requests, pandas, PyYAML
 ```
 
-Two free accounts / keys are required, supplied via environment variables (never hardcoded, never committed):
+무료 계정 / API 키 두 가지가 필요하며, 환경변수로 주입합니다(코드에 하드코딩 금지, 커밋 금지).
 
-| Variable | For | How to get |
+| 환경변수 | 용도 | 발급처 |
 |---|---|---|
-| `KRX_ID` / `KRX_PW` | `pykrx` ≥ 1.2 (prices & valuation metrics) | Free account at [data.krx.co.kr](https://data.krx.co.kr) |
-| `DART_API_KEY` | DART OpenAPI (financial statements) | Free API key at [opendart.fss.or.kr](https://opendart.fss.or.kr) |
+| `KRX_ID` / `KRX_PW` | `pykrx` ≥ 1.2 (가격 및 밸류에이션 지표) | [data.krx.co.kr](https://data.krx.co.kr) 무료 가입 |
+| `DART_API_KEY` | DART OpenAPI (재무제표) | [opendart.fss.or.kr](https://opendart.fss.or.kr) 무료 API 키 |
 
-Verify data access before anything downstream:
+하위 로직을 만들기 전에 먼저 데이터 접근을 검증합니다.
 
 ```bash
-python poc.py    # Gate 0 acceptance-criteria runner → outputs/poc_report.md
+python poc.py    # Gate 0 인수 기준 러너 → outputs/poc_report.md
 ```
 
 ---
 
-## Status
+## 진행 상황
 
-Build order mirrors `implementation_spec.md` §11.
+빌드 순서는 `implementation_spec.md` §11을 따릅니다.
 
-- [x] **Gate 0** — `collectors/` verified (POC passed 2026-07-08; sector coverage 98.5%)
+- [x] **Gate 0** — `collectors/` 검증 완료 (POC 통과 2026-07-08; 섹터 커버리지 98.5%)
 - [x] Stage 2 — `screens/quant_filter.py` + `screens/sector_tagger.py`
-- [x] Stage 1 input — `analysis/sector_dashboard.py`; prompts split (`stage1_sector.md`, `stage2_review.md`)
-- [x] Stage 3 — `analysis/deep_dive_llm.py` data-pack assembly + verdict writing (`prompts/valuation.md` is a **draft**, user review pending)
-- [ ] **Stage 4 — `allocate/allocator.py`** (monthly DCA sizing) ← next
-- [ ] `pipeline.py` + `.claude/commands/` slash commands
-- [ ] (Later) Phase 2 local dashboard (Streamlit)
+- [x] Stage 1 입력 — `analysis/sector_dashboard.py`; 프롬프트 분리 (`stage1_sector.md`, `stage2_review.md`)
+- [x] Stage 3 — `analysis/deep_dive_llm.py` 데이터 팩 조립 + 판정 기록 (`prompts/valuation.md` 는 **초안**, 사용자 검토 대기)
+- [ ] **Stage 4 — `allocate/allocator.py`** (월별 적립식 사이징) ← 다음 작업
+- [ ] `pipeline.py` + `.claude/commands/` 슬래시 커맨드
+- [ ] (추후) Phase 2 로컬 대시보드 (Streamlit)
 
-### Planned workflow (once Stage 4 + slash commands land)
+### 목표 워크플로 (Stage 4 + 슬래시 커맨드 완성 후)
 
-- `/screen` — run discovery (Stages 1–2), output the Stage 3 input queue
-- `/deepdive <ticker>` — run the 11-section valuation on one name
-- `/allocate <budget>` — size this month's DCA buys against current `portfolio.yaml`
+- `/screen` — 발굴(Stage 1~2) 실행, Stage 3 입력 큐 출력
+- `/deepdive <ticker>` — 한 종목에 대해 11개 섹션 밸류에이션 실행
+- `/allocate <budget>` — 현재 `portfolio.yaml` 기준으로 이번 달 적립식 매수 사이징
 
 ---
 
-## Repo layout
+## 저장소 구조
 
 ```
 value_investment_stock/
-├── CLAUDE.md                  # operational brief (read first each session)
-├── implementation_spec.md     # authoritative design & contracts (wins on conflict)
-├── config.yaml                # screening + allocation rules (no magic numbers in code)
-├── poc.py                     # Gate 0 acceptance runner
-├── collectors/                # ✅ collect only, no analysis
-│   ├── krx_collector.py       #    pykrx: prices & metrics
-│   └── dart_collector.py      #    DART API: financial statements
-├── screens/                   # ✅ filter only, no valuation
-│   ├── quant_filter.py        #    Stage 2 quant filter + value-trap pre-exclusion
-│   └── sector_tagger.py       #    stock → sector mapping
+├── CLAUDE.md                  # 운영 브리프 (매 세션 시작에 먼저 읽음)
+├── implementation_spec.md     # 권위 있는 설계 및 계약 (충돌 시 이 문서가 우선)
+├── config.yaml                # 선별 + 배분 규칙 (코드에 매직 넘버 없음)
+├── poc.py                     # Gate 0 인수 기준 러너
+├── collectors/                # ✅ 수집만, 분석 없음
+│   ├── krx_collector.py       #    pykrx: 가격 및 지표
+│   └── dart_collector.py      #    DART API: 재무제표
+├── screens/                   # ✅ 필터만, 밸류에이션 없음
+│   ├── quant_filter.py        #    Stage 2 퀀트 필터 + 밸류트랩 사전 배제
+│   └── sector_tagger.py       #    종목 → 섹터 매핑
 ├── analysis/                  # ✅
-│   ├── sector_dashboard.py    #    Stage 1 input generator
-│   └── deep_dive_llm.py       #    Stage 3 data-pack + verdict writing
+│   ├── sector_dashboard.py    #    Stage 1 입력 생성기
+│   └── deep_dive_llm.py       #    Stage 3 데이터 팩 + 판정 기록
 ├── prompts/                   # ✅ stage1_sector.md, stage2_review.md, valuation.md
-├── allocate/allocator.py      # ◻ Stage 4 sizing (build target)
-├── pipeline.py                # ◻ one-command orchestration (build target)
-├── portfolio.yaml             # ◻ holdings + cash, updated monthly (build target)
-├── decisions.log.yaml         # ◻ append-only executed-buy record (build target)
-├── runs/<run_id>/             # ◻ machine-readable stage artifacts per run (YYYYMM)
-├── verdicts/                  # ◻ Stage 3 verdicts, one YAML per ticker
-└── outputs/report_YYYYMMDD.md # human-readable reports (append-only history)
+├── allocate/allocator.py      # ◻ Stage 4 사이징 (예정)
+├── pipeline.py                # ◻ 단일 명령 오케스트레이션 (예정)
+├── portfolio.yaml             # ◻ 보유 + 현금, 매월 갱신 (예정)
+├── decisions.log.yaml         # ◻ 실행된 매수 기록 (append-only) (예정)
+├── runs/<run_id>/             # ◻ 실행별 기계 판독용 단계 산출물 (YYYYMM)
+├── verdicts/                  # ◻ Stage 3 판정, 종목당 YAML 1개
+└── outputs/report_YYYYMMDD.md # 사람이 읽는 리포트 (append-only 이력)
 ```
 
-Read all thresholds from `config.yaml`. Reports are append-only — never overwrite a prior dated report.
+모든 임계값은 `config.yaml`에서 읽습니다. 리포트는 append-only 이력이며, 지난 날짜의 리포트를
+절대 덮어쓰지 않습니다.
 
 ---
 
-## Documentation
+## 문서
 
-- **`CLAUDE.md`** — operational brief; read at the start of every session.
-- **`implementation_spec.md`** — authoritative data flow, artifact schemas, gate logic, human-checkpoint definitions (§7), and acceptance criteria. If it conflicts with any other doc, it wins.
+- **`CLAUDE.md`** — 운영 브리프. 매 세션 시작에 읽습니다.
+- **`implementation_spec.md`** — 권위 있는 데이터 흐름, 산출물 스키마, 게이트 로직, 인간 체크포인트 정의(§7), 인수 기준. 다른 문서와 충돌하면 이 문서가 우선합니다.
 
-## External screener override
+> 이 두 문서는 **에이전트(Claude)의 작업 문서**이므로 영어로 유지합니다. 본 README는 사람이
+> 읽는 공개 문서라 한국어로 작성합니다 — 역할이 다르며, 에이전트 워크플로는 README를 읽지 않습니다.
 
-If you paste a ticker list from a paid screener (퀀트킹 / 인텔리퀀트 / HTS / FnGuide),
-it is used as the Stage 2 candidate set instead of self-screening — but code still runs
-the fundamentals, trap, and re-rating gates over it, and the LLM still labels survivors.
-The override can replace *sourcing*; it cannot bypass a *gate*.
+## 외부 스크리너 override
+
+유료 스크리너(퀀트킹 / 인텔리퀀트 / HTS / FnGuide)에서 뽑은 종목 리스트를 붙여넣으면, 자체
+선별 대신 그 리스트를 Stage 2 후보 집합으로 사용합니다 — 단, 코드는 여전히 펀더멘털·트랩·
+리레이팅 게이트를 그 위에 적용하고, LLM은 여전히 생존 종목에 라벨을 답니다. override는
+*출처(sourcing)* 를 대체할 수 있을 뿐, *게이트* 를 우회할 수는 없습니다.
