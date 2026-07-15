@@ -2,8 +2,11 @@ __pycache__/
 *.pyc
 .env
 .venv/
-runs/*-smoke/
 
-# Private financial state — never commit to a public repo (real holdings, cash, buys)
+# Private financial state & run artifacts — never commit to a public repo
+# (real holdings, cash, buy history, screening results, verdicts, dated reports)
 portfolio.yaml
 decisions.log.yaml
+runs/
+verdicts/
+outputs/report_*.md
