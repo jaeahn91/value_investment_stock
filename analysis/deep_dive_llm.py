@@ -233,6 +233,7 @@ def write_verdict(run_id: str, ticker: str, fields: dict, base_dir: str = ".") -
     doc = {
         "ticker": ticker,
         "name": pack["name"],
+        "sector": pack.get("sector"),   # persisted for the Stage 4 sector cap (spec §12.7)
         "run_id": run_id,
         "generated": today.isoformat(),
         "verdict": verdict,

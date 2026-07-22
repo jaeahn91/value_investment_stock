@@ -365,7 +365,7 @@ Deliberately out of v1 so the pipeline reaches end-to-end sooner:
 4. `screens/sector_tagger.py` + `screens/quant_filter.py` → produces `stage2_queue.yaml`
 5. Split prompts per §8 (`stage1_sector.md`, `stage2_review.md`); wire sector_dashboard generation
 6. `analysis/deep_dive_llm.py` data-pack assembly + verdict writing
-7. `allocate/allocator.py` against `allocation.yaml` schema — **design finalized in §12; implementation pending**
+7. ✅ `allocate/allocator.py` against `allocation.yaml` schema — design §12; **implemented + tested** (pure `size()` core, IO wrapper, `tests/test_allocator.py`; `write_verdict` persists `sector` per §12.7)
 8. `pipeline.py` + `.claude/commands/` slash commands
 9. (Phase 2) dashboard
 

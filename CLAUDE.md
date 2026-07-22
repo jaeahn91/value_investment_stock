@@ -71,8 +71,10 @@ value_investment_stock/
 ├── analysis/
 │   ├── sector_dashboard.py    # ✅ Stage 1 input: sector_dashboard.yaml generator
 │   └── deep_dive_llm.py       # ✅ Stage 3 data-pack assembly + verdict writing
-├── allocate/
-│   └── allocator.py           # Stage 4 monthly DCA sizing
+├── allocate/                  # ✅
+│   └── allocator.py           # ✅ Stage 4 DCA sizing (pure size() core + IO wrapper; spec §12)
+├── tests/                     # ✅
+│   └── test_allocator.py      # ✅ synthetic-input unit tests for the pure size() core
 ├── prompts/                   # (discovery.md draft was split per spec §8 and deleted — see git history)
 │   ├── stage1_sector.md       # ✅ Stage 1 prompt (input: sector_dashboard.yaml)
 │   ├── stage2_review.md       # ✅ Stage 2 label/veto prompt (input: stage2_queue.yaml)
@@ -128,6 +130,6 @@ Output: per-stock won amount + share count, resulting post-buy weights, leftover
 4. ✅ `screens/sector_tagger.py` + `screens/quant_filter.py` — produces `stage2_queue.yaml` (smoke-tested end-to-end).
 5. ✅ Prompts split per spec §8 (`stage1_sector.md`, `stage2_review.md`); `analysis/sector_dashboard.py` generates `sector_dashboard.yaml`.
 6. ✅ `analysis/deep_dive_llm.py` — data-pack assembly + verdict writing (`prompts/valuation.md` DRAFTED — user review pending).
-7. ◀ **`allocate/allocator.py` — Stage 4 sizing against the `allocation.yaml` schema.**
-8. `pipeline.py` + `.claude/commands/` slash commands.
+7. ✅ `allocate/allocator.py` — Stage 4 sizing (pure `size()` core + IO wrapper; spec §12). 11 unit tests (`tests/test_allocator.py`) + end-to-end smoke test pass; `deep_dive_llm.write_verdict` now persists `sector` (§12.7).
+8. ◀ **`pipeline.py` + `.claude/commands/` slash commands.**
 9. (Later) Phase 2 local dashboard (Streamlit). Build only after the report generator proves itself.
